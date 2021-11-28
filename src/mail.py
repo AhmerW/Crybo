@@ -10,14 +10,15 @@ from email.mime.text import MIMEText
 from dotenv import load_dotenv
 
 
-MAIL_RECIPIENTS = [
-    "ahmer.business@gmail.com",
-    "mozacry@gmail.com",
-]
-
 load_dotenv(".env")
 
-MAIL_USERNAME = "surveyplatform.mail@gmail.com"
+MAIL_RECIPIENTS = [
+    os.getenv("recipient1"),
+    os.getenv("recipient2"),
+]
+
+
+MAIL_USERNAME = os.getenv("MAIL-USERNAME")
 MAIL_PWD = os.getenv("MAIL-PWD")
 
 
@@ -32,7 +33,7 @@ def send_email(message, recipients):
             MAIL_PWD,
         )
         server.sendmail(
-            "surveyplatform.mail@gmail.com",
+            MAIL_USERNAME,
             recipients,
             message,
         )
@@ -44,7 +45,7 @@ def send_email(message, recipients):
 
 def send_crypto_mail(cryptos: List[dict]):
     msg = MIMEMultipart("alternative")
-    # {len(cryptos)} coin{'s' if len(cryptos) > 1 else ''}
+
     mail_data = {
         "from": MAIL_USERNAME,
         "to": ", ".join(MAIL_RECIPIENTS),
