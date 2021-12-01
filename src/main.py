@@ -3,6 +3,7 @@ import sys
 import json
 import atexit
 from time import sleep, time
+from datetime import datetime
 from typing import Final, List
 
 import dotenv
@@ -16,16 +17,14 @@ dotenv.load_dotenv(".env")
 
 BLACKLISTS = ["realt"]
 BASE_URL = "https://api.coingecko.com/api/v3/"  # api url
-INTERVAL = 86400  # market check interval (24h)
+INTERVAL = 500  # market check interval (24h)
 
 MAIL_CHUNK = 20  # not implemented, but max 20 coins per mail
 MAIL_CHUNK_DELAY = 200  # wait 200 coins before sending mail
 
-CHUNKS = 30  # Fetch in chunks of 30 coins
+CHUNKS = 45  # Fetch in chunks of 45 coins
 CHUNK_BREAKS = [
-    10,
-    20,
-    29,
+    22
 ]  # Break at 15 during the chuck and wait for CHUNK_BREAK_DELAY Secoonds
 CHUNK_BREAK_DELAY = 5  # Duration of the chunk break in seconds
 CHUNK_DELAY = 60  # Wait 60 seconds between chunks
@@ -40,8 +39,25 @@ def make_url(url) -> str:
 
 def make_request(url) -> dict:
     response = requests.get(make_url(url))
-    if response.status_code != 200:
-        sys.exit()
+
+    if response.status_code != 404 and response.status_code != 200:
+        is_error = True
+
+        cprint(Colors.RED, f"Error Code: {response.status_code}")
+        try:
+            response.json()
+            if response.get("error"):
+                cprint(Colors.RED, f"Error: {response.json()['error']}")
+
+            is_error = False
+        except:
+            pass
+
+        if is_error:
+            cprint(Colors.RED, f"! RATELIMIT ! {response.text}")
+            cprint(Colors.YELLOW, f"\n\n[Saving state]")
+            stateContainer.save_state_file()
+            sys.exit()
 
     return response.json()
 
@@ -94,6 +110,9 @@ class StateContainer:
         return not self.state
 
     def preload(self):
+        if not "logs" in os.listdir():
+            os.mkdir("logs")
+
         if not os.path.exists("state.json"):
             with open("state.json", "w+") as f:
                 f.write('{"coins": []}')
@@ -112,6 +131,17 @@ stateContainer: Final[StateContainer] = StateContainer()
 
 def price_is_match(initial_price: int, current_price: int, incr: int) -> bool:
     return (initial_price * (incr)) <= current_price
+
+
+def write_to_log_date_file(title: str, content: str):
+    with open(
+        os.path.join(
+            "logs",
+            f"{title}-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.log",
+        ),
+        "w+",
+    ) as f:
+        f.write(content)
 
 
 def check_market() -> None:
@@ -144,6 +174,11 @@ def check_market() -> None:
             continue
 
         if checked_coins % MAIL_CHUNK_DELAY == 0:
+            write_to_log_date_file(f"checked-{checked_coins}-coins", "")
+
+            if checked_coins > 0:
+                stateContainer.save_state_file()
+
             if for_mail:
 
                 send_crypto_mail([d[1] for d in for_mail])
@@ -158,9 +193,6 @@ def check_market() -> None:
                     state[index]["mail-sent-ts"] = time()
 
                 for_mail.clear()
-
-        if i % 1000 == 0:
-            stateContainer.save_state_file()
 
         if chunk >= CHUNKS:
             cprint(
@@ -182,6 +214,8 @@ def check_market() -> None:
         coin_data = make_request(f"coins/{coin['id']}/")
         coin_currency = coin.get("currency", CURRENCY)
         try:
+            checked_coins += 1
+
             if not coin.get("initial-price"):
                 cprint(
                     Colors.RED,
@@ -203,8 +237,6 @@ def check_market() -> None:
                 }
                 continue
 
-            checked_coins += 1
-
             current_price = coin_data["market_data"]["current_price"][coin_currency]
 
             cprint(
@@ -225,7 +257,15 @@ def check_market() -> None:
             )
 
             if grtr_than_initial or grtr_than_last_checked:
-                cprint(Colors.GREEN, f"{INCR_ALERT}x since last checked")
+                try:
+
+                    increase = int(last_checked_price / initial_price * 100)
+                except Exception as e:
+                    increase = 200
+
+                cprint(
+                    Colors.GREEN, f"{increase}% ({increase / 100}x) since last checked"
+                )
                 if grtr_than_last_checked:
                     state[i]["mail-sent"] = False
 

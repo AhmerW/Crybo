@@ -109,7 +109,7 @@ tr:nth-child(even) {
     for crypto in cryptos:
         try:
 
-            increase = (
+            increase = int(
                 crypto.get("last-checked-price") / crypto.get("initial-price") * 100
             )
         except Exception as e:
