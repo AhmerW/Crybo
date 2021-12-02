@@ -9,6 +9,7 @@ from typing import Final, List
 import dotenv
 import requests
 
+from mathfuncs import calculate_increase, increase_x
 from mail import send_crypto_mail
 
 
@@ -17,19 +18,19 @@ dotenv.load_dotenv(".env")
 
 BLACKLISTS = ["realt"]
 BASE_URL = "https://api.coingecko.com/api/v3/"  # api url
-INTERVAL = 500  # market check interval (24h)
+INTERVAL = 500  # market check interval (INTERVAL seconds)
 
-MAIL_CHUNK = 20  # not implemented, but max 20 coins per mail
-MAIL_CHUNK_DELAY = 200  # wait 200 coins before sending mail
+MAIL_CHUNK = 20  # not implemented, but max MAIL_CHUNK coins per mail
+MAIL_CHUNK_DELAY = 1000  # wait MAIL_CHUNK_DELAY coins before sending mail
 
-CHUNKS = 45  # Fetch in chunks of 45 coins
+CHUNKS = 45  # Fetch in chunks of CHUCNKS coins
 CHUNK_BREAKS = [
     22
-]  # Break at 15 during the chuck and wait for CHUNK_BREAK_DELAY Secoonds
+]  # Break at CHUNCK_BREAKS during the chuck and wait for CHUNK_BREAK_DELAY Secoonds
 CHUNK_BREAK_DELAY = 5  # Duration of the chunk break in seconds
-CHUNK_DELAY = 60  # Wait 60 seconds between chunks
+CHUNK_DELAY = 60  # Wait CHUNCK_DELAY seconds between chunks
 
-INCR_ALERT = 2  # will allert on 2x increase
+INCR_ALERT = 2  # will allert on (INCR_ALERT)x increase
 CURRENCY = "usd"
 
 
@@ -174,7 +175,6 @@ def check_market() -> None:
             continue
 
         if checked_coins % MAIL_CHUNK_DELAY == 0:
-            write_to_log_date_file(f"checked-{checked_coins}-coins", "")
 
             if checked_coins > 0:
                 stateContainer.save_state_file()
@@ -238,14 +238,28 @@ def check_market() -> None:
                 continue
 
             current_price = coin_data["market_data"]["current_price"][coin_currency]
+            initial_price = coin["initial-price"]
+            last_checked_price = coin["last-checked-price"]
+
+            if current_price - last_checked_price < 0:
+                try:
+                    decrease = round(
+                        (last_checked_price - current_price) / last_checked_price * 100,
+                        2,
+                    )
+
+                except:
+                    decrease = 0
+                cprint(
+                    Colors.WHITE,
+                    f"\033[35m {coin.get('name')} \033[0m current price: {current_price} {coin_currency}. [Down '-{decrease}%' (-{round(decrease/100, 2)}x)]",
+                )
+                continue
 
             cprint(
                 Colors.WHITE,
                 f"\033[35m {coin.get('name')} \033[0m current price: {current_price} {coin_currency}",
             )
-
-            initial_price = coin["initial-price"]
-            last_checked_price = coin["last-checked-price"]
 
             grtr_than_initial = price_is_match(
                 initial_price,
@@ -259,12 +273,15 @@ def check_market() -> None:
             if grtr_than_initial or grtr_than_last_checked:
                 try:
 
-                    increase = int(last_checked_price / initial_price * 100)
+                    increase = int(
+                        calculate_increase(last_checked_price, initial_price)
+                    )
                 except Exception as e:
-                    increase = 200
+                    increase = 100
 
                 cprint(
-                    Colors.GREEN, f"{increase}% ({increase / 100}x) since last checked"
+                    Colors.GREEN,
+                    f"{increase}% ({increase_x(increase)}x) since last checked",
                 )
                 if grtr_than_last_checked:
                     state[i]["mail-sent"] = False
@@ -296,8 +313,15 @@ def onexit():
 
 
 def start() -> None:
+    market_checks = 1
     while True:
         check_market()
+        write_to_log_date_file(
+            f"market-check-{market_checks}-done",
+            "",
+        )
+
+        market_checks += 1
         cprint(Colors.END, f"Done checking market. Sleeping {INTERVAL}")
         sleep(INTERVAL)
 

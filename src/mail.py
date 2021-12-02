@@ -9,6 +9,8 @@ from email.mime.text import MIMEText
 
 from dotenv import load_dotenv
 
+from mathfuncs import calculate_increase
+
 
 load_dotenv(".env")
 
@@ -49,7 +51,7 @@ def send_crypto_mail(cryptos: List[dict]):
     mail_data = {
         "from": MAIL_USERNAME,
         "to": ", ".join(MAIL_RECIPIENTS),
-        "subject": f"Crybo | Crypto alert",
+        "subject": f"Crybo | {len(cryptos)} coin{'s' if len(cryptos) > 1 else ''}",
     }
     for k, v in mail_data.items():
         msg[k] = v
@@ -108,14 +110,12 @@ tr:nth-child(even) {
 
     for crypto in cryptos:
         try:
+            increase = calculate_increase(
+                crypto["inital-price"], crypto["initial_price"]
+            )
 
-            increase = int(
-                crypto.get("last-checked-price") / crypto.get("initial-price") * 100
-            )
         except Exception as e:
-            print(
-                f'{crypto.get("last-checked-price")}, {crypto.get("initial-price")}, {e}'
-            )
+
             increase = 100
         html += f"""
         <tr>
